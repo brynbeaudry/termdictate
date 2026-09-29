@@ -1,0 +1,85 @@
+# TermDictate
+
+macOS dictation doesn't work in Terminal.app — the fn-fn gesture starts an audio session but
+Terminal never implements the text-insertion protocol Dictation relies on, so nothing gets typed.
+TermDictate is a small menu-bar agent that watches for the same fn-fn gesture and, only while
+Terminal is frontmost, runs its own on-device speech recognition and types the result in via
+synthetic keystrokes instead.
+
+- Only activates when Terminal.app is frontmost; native Dictation still works normally everywhere else.
+- Uses Apple's on-device Speech framework — no bundled models, works offline.
+- Live-corrects the current sentence as recognition refines its guess (like real Dictation), but
+  locks in each utterance once you pause so a later utterance can never wipe out an earlier one.
+- Always appends at wherever the keystroke stream currently is — it does not support inserting at
+  an arbitrarily repositioned cursor mid-session (see "Known limitations" below).
+
+## Install
+
+Requires Xcode Command Line Tools (`xcode-select -p` to check) and macOS 13+.
+
+```
+git clone <this repo> term-dictate
+cd term-dictate
+./build.sh
+```
+
+This builds `build/TermDictate.app`. Launch it with:
+
+```
+open build/TermDictate.app
+```
+
+On first launch it'll ask for Accessibility access (needed to detect fn-fn and to type into
+Terminal) and open System Settings for you — grant it there. It'll then request Microphone and
+Speech Recognition access. Once granted, it stays running as a menu-bar mic icon.
+
+**Note:** the app is ad-hoc code-signed (no paid Apple Developer account needed), which means every
+rebuild changes its signature and invalidates the Accessibility grant. After rebuilding, you'll
+need to toggle TermDictate off/on again in System Settings > Privacy & Security > Accessibility
+before relaunching.
+
+### Run at login
+
+To have it start automatically, create a LaunchAgent:
+
+```
+cat > ~/Library/LaunchAgents/com.brynbeaudry.termdictate.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.brynbeaudry.termdictate</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>/path/to/term-dictate/build/TermDictate.app</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+EOF
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.brynbeaudry.termdictate.plist
+```
+
+## Usage
+
+In Terminal, double-tap `fn` to start listening (menu bar icon fills in), speak, double-tap `fn`
+again to stop. Pausing between sentences is fine — it keeps listening continuously and starts a
+fresh recognition pass under the hood without you noticing.
+
+## Known limitations
+
+- **No mid-line cursor-aware insertion.** Terminal.app's Accessibility API can read the cursor
+  position, but repositioning it via that same API doesn't reliably redirect where synthetic
+  keystrokes land — Accessibility IPC and HID keystroke injection are independent pathways that
+  don't synchronize with each other. So dictated text always lands wherever the keystroke stream
+  is already at; moving the cursor mid-session doesn't redirect new dictation there.
+- **Occasional mid-utterance punctuation flicker.** While an utterance is still in progress (before
+  a pause), the recognizer can revise its own punctuation guess, so a period/comma can briefly
+  appear then disappear. Once a pause locks the utterance in, it's permanent. This is the trade-off
+  for also fixing a worse bug where a very long pause could silently drop an entire earlier
+  sentence.
+- Only tested against Terminal.app; other terminal emulators (iTerm2, etc.) aren't targeted since
+  the fn-fn interception only checks for Terminal's bundle ID.
