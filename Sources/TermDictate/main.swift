@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let detector = FnTapDetector()
+    private let detector = RightCommandTapDetector()
     private let dictation = DictationController()
     private var statusItem: NSStatusItem?
     private var permissionPollTimer: Timer?
@@ -80,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "TermDictate idle")
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "TermDictate — fn-fn in Terminal", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "TermDictate — right ⌘ twice in Terminal", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu

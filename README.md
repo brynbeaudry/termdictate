@@ -1,8 +1,8 @@
 # TermDictate
 
-macOS dictation doesn't work in Terminal.app — the fn-fn gesture starts an audio session but
+macOS dictation doesn't work in Terminal.app — the Dictation shortcut starts an audio session but
 Terminal never implements the text-insertion protocol Dictation relies on, so nothing gets typed.
-TermDictate is a small menu-bar agent that watches for the same fn-fn gesture and, only while
+TermDictate is a small menu-bar agent that watches for the same right-Command double-tap gesture and, only while
 Terminal is frontmost, runs its own on-device speech recognition and types the result in via
 synthetic keystrokes instead.
 
@@ -29,7 +29,7 @@ This builds `build/TermDictate.app`. Launch it with:
 open build/TermDictate.app
 ```
 
-On first launch it'll ask for Accessibility access (needed to detect fn-fn and to type into
+On first launch it'll ask for Accessibility access (needed to detect the right-Command double-tap and to type into
 Terminal) and open System Settings for you — grant it there. It'll then request Microphone and
 Speech Recognition access. Once granted, it stays running as a menu-bar mic icon.
 
@@ -65,9 +65,13 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.brynbeaudry.termdict
 
 ## Usage
 
-In Terminal, double-tap `fn` to start listening (menu bar icon fills in), speak, double-tap `fn`
+In Terminal, double-tap right `⌘` to start listening (menu bar icon fills in), speak, double-tap right `⌘`
 again to stop. Pausing between sentences is fine — it keeps listening continuously and starts a
 fresh recognition pass under the hood without you noticing.
+
+Set System Settings > Keyboard > Dictation > Shortcut to "Press Right Command Key Twice" so native
+Dictation uses the same gesture in every other app. This works on any keyboard, including
+third-party ones whose fn key never reaches macOS.
 
 ## Known limitations
 
@@ -82,4 +86,4 @@ fresh recognition pass under the hood without you noticing.
   for also fixing a worse bug where a very long pause could silently drop an entire earlier
   sentence.
 - Only tested against Terminal.app; other terminal emulators (iTerm2, etc.) aren't targeted since
-  the fn-fn interception only checks for Terminal's bundle ID.
+  the right-Command interception only checks for Terminal's bundle ID.

@@ -15,7 +15,7 @@ import ApplicationServices
 enum TerminalAX {
     private static func focusedTextArea() -> AXUIElement? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              app.bundleIdentifier == FnTapDetector.terminalBundleID else { return nil }
+              app.bundleIdentifier == RightCommandTapDetector.terminalBundleID else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         var focused: AnyObject?
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
