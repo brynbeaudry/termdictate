@@ -33,10 +33,20 @@ On first launch it'll ask for Accessibility access (needed to detect the right-C
 Terminal) and open System Settings for you — grant it there. It'll then request Microphone and
 Speech Recognition access. Once granted, it stays running as a menu-bar mic icon.
 
-**Note:** the app is ad-hoc code-signed (no paid Apple Developer account needed), which means every
-rebuild changes its signature and invalidates the Accessibility grant. After rebuilding, you'll
-need to toggle TermDictate off/on again in System Settings > Privacy & Security > Accessibility
-before relaunching.
+**Signing:** macOS ties the Accessibility grant to the app's code signature. `build.sh` signs with
+a "TermDictate Local Signing" certificate from your login keychain if one exists, which keeps the
+signature stable so the grant survives rebuilds. Without it, the app is signed ad-hoc, every
+rebuild looks like a new app, and you'll need to remove and re-add TermDictate in System Settings >
+Privacy & Security > Accessibility after each build. To create the certificate once:
+
+```
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 3650 \
+  -subj "/CN=TermDictate Local Signing" \
+  -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning"
+openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -out id.p12 -passout pass:td
+security import id.p12 -k ~/Library/Keychains/login.keychain-db -P td -T /usr/bin/codesign
+rm key.pem cert.pem id.p12
+```
 
 ### Run at login
 
