@@ -32,7 +32,11 @@ import Speech
 /// whatever app the user switched to.
 final class DictationController {
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-    private let audioEngine = AVAudioEngine()
+    /// Built per session and discarded on teardown. Stopping an engine isn't
+    /// enough to hand the microphone back — a live engine keeps its input
+    /// device claimed, which blocks the system's own Dictation in whatever app
+    /// the user switched to.
+    private var audioEngine: AVAudioEngine?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var active = false
@@ -109,19 +113,22 @@ final class DictationController {
         committedText = ""
         needsLeadingSpace = TerminalAX.characterBeforeCursor().map { !$0.isWhitespace } ?? false
 
-        let inputNode = audioEngine.inputNode
+        let engine = AVAudioEngine()
+        audioEngine = engine
+        let inputNode = engine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             self?.request?.append(buffer)
         }
 
         do {
-            audioEngine.prepare()
-            try audioEngine.start()
+            engine.prepare()
+            try engine.start()
         } catch {
             FileHandle.standardError.write("TermDictate: failed to start audio engine: \(error)\n".data(using: .utf8)!)
             active = false
-            audioEngine.inputNode.removeTap(onBus: 0)
+            inputNode.removeTap(onBus: 0)
+            audioEngine = nil
             log.error("audio engine failed to start: \(error.localizedDescription)")
             onStateChange?(false, enabled)
             return
@@ -138,8 +145,12 @@ final class DictationController {
             return
         }
         active = false
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if let engine = audioEngine {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+            engine.reset()
+        }
+        audioEngine = nil
         request?.endAudio()
         task?.cancel()
         request = nil
