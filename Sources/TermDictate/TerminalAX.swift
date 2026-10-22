@@ -13,9 +13,15 @@ import ApplicationServices
 /// keystrokes doesn't reliably redirect where those keystrokes land, so
 /// there's no `setCursorOffset` here; only safe-checkpoint reads.
 enum TerminalAX {
+    static let bundleID = "com.apple.Terminal"
+
+    static func isFrontmost() -> Bool {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID
+    }
+
     private static func focusedTextArea() -> AXUIElement? {
         guard let app = NSWorkspace.shared.frontmostApplication,
-              app.bundleIdentifier == RightCommandTapDetector.terminalBundleID else { return nil }
+              app.bundleIdentifier == bundleID else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         var focused: AnyObject?
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, &focused) == .success,

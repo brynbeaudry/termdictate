@@ -7,6 +7,9 @@ Terminal is frontmost, runs its own on-device speech recognition and types the r
 synthetic keystrokes instead.
 
 - Only activates when Terminal.app is frontmost; native Dictation still works normally everywhere else.
+- A running session follows Terminal's focus. Switch to another app and it releases the microphone
+  and stops typing until you come back, so it never competes with that app's own Dictation or
+  echoes text into it. The menu-bar icon shows a hollow mic circle while paused.
 - Uses Apple's on-device Speech framework — no bundled models, works offline.
 - Live-corrects the current sentence as recognition refines its guess (like real Dictation), but
   locks in each utterance once you pause so a later utterance can never wipe out an earlier one.
@@ -78,6 +81,11 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.brynbeaudry.termdict
 In Terminal, double-tap right `⌘` to start listening (menu bar icon fills in), speak, double-tap right `⌘`
 again to stop. Pausing between sentences is fine — it keeps listening continuously and starts a
 fresh recognition pass under the hood without you noticing.
+
+Switching away from Terminal pauses the session rather than ending it: the mic is released, so
+double-tapping right `⌘` in Mail or Outlook gets you that app's normal Dictation with no
+interference, and switching back to Terminal resumes where you left off. Each resume starts a new
+utterance, so it won't try to revise anything typed before you switched away.
 
 Set System Settings > Keyboard > Dictation > Shortcut to "Press Right Command Key Twice" so native
 Dictation uses the same gesture in every other app. This works on any keyboard, including

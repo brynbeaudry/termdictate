@@ -22,12 +22,21 @@ import Speech
 /// immediately before typing doesn't reliably redirect where the keystrokes
 /// land, so dictated text always lands wherever the keystroke stream is
 /// already at, not at an arbitrarily repositioned cursor.
+///
+/// A session has two independent pieces of state: `enabled` is the user's
+/// intent, toggled by the gesture, and `active` is whether the mic and
+/// recognizer are actually running. They diverge whenever Terminal stops
+/// being frontmost — the session is suspended, releasing the audio input so
+/// the system's own Dictation can use it, and it resumes on return. Without
+/// that, both the mic and the synthetic-keystroke stream follow focus into
+/// whatever app the user switched to.
 final class DictationController {
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private let audioEngine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var active = false
+    private var enabled = false
 
     /// Dedupe reference only: normalized text of past utterances this session.
     private var committedText = ""
@@ -40,8 +49,9 @@ final class DictationController {
     /// safe checkpoint, then advanced purely by computation from here on.
     private var needsLeadingSpace = false
 
-    var onStateChange: ((Bool) -> Void)?
+    var onStateChange: ((Bool, Bool) -> Void)?
     var isRunning: Bool { active }
+    var isEnabled: Bool { enabled }
 
     func requestPermissions(completion: @escaping (Bool) -> Void) {
         SFSpeechRecognizer.requestAuthorization { speechStatus in
@@ -54,6 +64,29 @@ final class DictationController {
     }
 
     func start() {
+        enabled = true
+        beginSession()
+    }
+
+    func stop() {
+        enabled = false
+        endSession()
+    }
+
+    /// Releases the mic and the keystroke stream while Terminal isn't
+    /// frontmost, leaving the user's intent intact so `resume()` can pick the
+    /// session back up.
+    func suspend() {
+        guard enabled, active else { return }
+        endSession()
+    }
+
+    func resume() {
+        guard enabled, !active else { return }
+        beginSession()
+    }
+
+    private func beginSession() {
         guard !active, let recognizer = recognizer, recognizer.isAvailable else { return }
         active = true
         committedText = ""
@@ -72,15 +105,19 @@ final class DictationController {
             FileHandle.standardError.write("TermDictate: failed to start audio engine: \(error)\n".data(using: .utf8)!)
             active = false
             audioEngine.inputNode.removeTap(onBus: 0)
+            onStateChange?(false, enabled)
             return
         }
 
-        onStateChange?(true)
+        onStateChange?(true, enabled)
         beginRecognitionTask(recognizer: recognizer)
     }
 
-    func stop() {
-        guard active else { return }
+    private func endSession() {
+        guard active else {
+            onStateChange?(false, enabled)
+            return
+        }
         active = false
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -88,7 +125,9 @@ final class DictationController {
         task?.cancel()
         request = nil
         task = nil
-        onStateChange?(false)
+        livePartialText = ""
+        typedForTask = ""
+        onStateChange?(false, enabled)
     }
 
     private func beginRecognitionTask(recognizer: SFSpeechRecognizer) {
@@ -152,6 +191,10 @@ final class DictationController {
     /// already sit wherever our own last correction left it.
     private func applyCorrection(target: String) {
         guard target != typedForTask else { return }
+        // Recognition callbacks arrive off the main queue and can land in the
+        // gap between focus leaving Terminal and `suspend()` running, so the
+        // frontmost check is repeated here rather than trusted from `active`.
+        guard TerminalAX.isFrontmost() else { return }
 
         let commonPrefixCount = zip(typedForTask, target).prefix { $0 == $1 }.count
         let deleteCount = typedForTask.count - commonPrefixCount

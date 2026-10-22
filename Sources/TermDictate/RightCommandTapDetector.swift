@@ -8,7 +8,6 @@ import CoreGraphics
 /// result. When that happens we swallow the second tap so the system's own
 /// (broken, in Terminal) attempt never fires, and call `onDoubleTap` instead.
 final class RightCommandTapDetector {
-    static let terminalBundleID = "com.apple.Terminal"
     private static let doubleTapThreshold: CFAbsoluteTime = 0.4
     private static let rightCommandKeyCode: Int64 = 54
     private static let rightCommandDeviceFlag: UInt64 = 0x10
@@ -59,10 +58,6 @@ final class RightCommandTapDetector {
         return true
     }
 
-    private func isTerminalFrontmost() -> Bool {
-        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.terminalBundleID
-    }
-
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .keyDown {
             // A real keystroke while Command is down means it's being used as a
@@ -87,7 +82,7 @@ final class RightCommandTapDetector {
         if rightCommandDown && !rightCommandCurrentlyDown {
             rightCommandCurrentlyDown = true
             let now = CFAbsoluteTimeGetCurrent()
-            if let last = lastRightCommandDownTime, now - last < Self.doubleTapThreshold, isTerminalFrontmost() {
+            if let last = lastRightCommandDownTime, now - last < Self.doubleTapThreshold, TerminalAX.isFrontmost() {
                 lastRightCommandDownTime = nil
                 pendingSwallowRelease = true
                 DispatchQueue.main.async { [weak self] in self?.onDoubleTap?() }

@@ -56,24 +56,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startListening() {
         guard !detector.isRunning else { return }
 
-        dictation.onStateChange = { [weak self] listening in
-            self?.updateStatusIcon(listening: listening)
+        dictation.onStateChange = { [weak self] listening, armed in
+            self?.updateStatusIcon(listening: listening, armed: armed)
         }
 
         detector.onDoubleTap = { [weak self] in
             guard let self else { return }
-            if self.dictation.isRunning {
+            if self.dictation.isEnabled {
                 self.dictation.stop()
             } else {
                 self.dictation.start()
             }
         }
 
+        observeFrontmostApp()
+
         guard detector.start() else {
             statusItem?.button?.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "TermDictate failed to start")
             return
         }
-        updateStatusIcon(listening: false)
+        updateStatusIcon(listening: false, armed: false)
+    }
+
+    /// A running session follows Terminal's focus: leaving Terminal releases
+    /// the mic so the system's own Dictation can claim it in the app the user
+    /// switched to, and returning picks the session back up.
+    private func observeFrontmostApp() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            if app?.bundleIdentifier == TerminalAX.bundleID {
+                self.dictation.resume()
+            } else {
+                self.dictation.suspend()
+            }
+        }
     }
 
     private func setupStatusItem() {
@@ -87,9 +108,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
     }
 
-    private func updateStatusIcon(listening: Bool) {
-        let symbol = listening ? "mic.fill" : "mic"
-        statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: listening ? "TermDictate listening" : "TermDictate idle")
+    private func updateStatusIcon(listening: Bool, armed: Bool) {
+        let symbol: String
+        let description: String
+        switch (listening, armed) {
+        case (true, _):
+            symbol = "mic.fill"
+            description = "TermDictate listening"
+        case (false, true):
+            symbol = "mic.circle"
+            description = "TermDictate paused — mic released until Terminal is frontmost"
+        case (false, false):
+            symbol = "mic"
+            description = "TermDictate idle"
+        }
+        statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
     }
 }
 
