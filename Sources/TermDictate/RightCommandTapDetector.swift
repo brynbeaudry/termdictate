@@ -85,6 +85,7 @@ final class RightCommandTapDetector {
             if let last = lastRightCommandDownTime, now - last < Self.doubleTapThreshold, TerminalAX.isFrontmost() {
                 lastRightCommandDownTime = nil
                 pendingSwallowRelease = true
+                log.info("right-command double-tap in Terminal: swallowed, toggling")
                 DispatchQueue.main.async { [weak self] in self?.onDoubleTap?() }
                 return nil
             }

@@ -48,6 +48,9 @@ final class DictationController {
     /// space. Established once per utterance from a real cursor read at a
     /// safe checkpoint, then advanced purely by computation from here on.
     private var needsLeadingSpace = false
+    /// Logging only: tracks whether injection is currently being dropped, so a
+    /// suppression episode logs one line instead of one per partial result.
+    private var suppressingInjection = false
 
     var onStateChange: ((Bool, Bool) -> Void)?
     var isRunning: Bool { active }
@@ -64,11 +67,13 @@ final class DictationController {
     }
 
     func start() {
+        log.info("gesture: start requested")
         enabled = true
         beginSession()
     }
 
     func stop() {
+        log.info("gesture: stop requested")
         enabled = false
         endSession()
     }
@@ -77,18 +82,30 @@ final class DictationController {
     /// frontmost, leaving the user's intent intact so `resume()` can pick the
     /// session back up.
     func suspend() {
-        guard enabled, active else { return }
+        guard enabled, active else {
+            log.info("suspend: no-op (enabled=\(enabled) active=\(active))")
+            return
+        }
+        log.info("suspend: releasing mic")
         endSession()
     }
 
     func resume() {
-        guard enabled, !active else { return }
+        guard enabled, !active else {
+            log.info("resume: no-op (enabled=\(enabled) active=\(active))")
+            return
+        }
+        log.info("resume: reclaiming mic")
         beginSession()
     }
 
     private func beginSession() {
-        guard !active, let recognizer = recognizer, recognizer.isAvailable else { return }
+        guard !active, let recognizer = recognizer, recognizer.isAvailable else {
+            log.error("beginSession: refused (active=\(active) recognizerAvailable=\(recognizer?.isAvailable ?? false))")
+            return
+        }
         active = true
+        suppressingInjection = false
         committedText = ""
         needsLeadingSpace = TerminalAX.characterBeforeCursor().map { !$0.isWhitespace } ?? false
 
@@ -105,10 +122,12 @@ final class DictationController {
             FileHandle.standardError.write("TermDictate: failed to start audio engine: \(error)\n".data(using: .utf8)!)
             active = false
             audioEngine.inputNode.removeTap(onBus: 0)
+            log.error("audio engine failed to start: \(error.localizedDescription)")
             onStateChange?(false, enabled)
             return
         }
 
+        log.info("session active: mic open")
         onStateChange?(true, enabled)
         beginRecognitionTask(recognizer: recognizer)
     }
@@ -127,6 +146,7 @@ final class DictationController {
         task = nil
         livePartialText = ""
         typedForTask = ""
+        log.info("session inactive: mic released (still enabled=\(enabled))")
         onStateChange?(false, enabled)
     }
 
@@ -194,7 +214,17 @@ final class DictationController {
         // Recognition callbacks arrive off the main queue and can land in the
         // gap between focus leaving Terminal and `suspend()` running, so the
         // frontmost check is repeated here rather than trusted from `active`.
-        guard TerminalAX.isFrontmost() else { return }
+        guard TerminalAX.isFrontmost() else {
+            if !suppressingInjection {
+                suppressingInjection = true
+                log.error("injection dropped: Terminal not frontmost while session still active")
+            }
+            return
+        }
+        if suppressingInjection {
+            suppressingInjection = false
+            log.info("injection resumed: Terminal frontmost again")
+        }
 
         let commonPrefixCount = zip(typedForTask, target).prefix { $0 == $1 }.count
         let deleteCount = typedForTask.count - commonPrefixCount

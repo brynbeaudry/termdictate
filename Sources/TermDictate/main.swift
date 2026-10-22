@@ -89,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] notification in
             guard let self else { return }
             let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            log.info("frontmost -> \(app?.bundleIdentifier ?? "unknown")")
             if app?.bundleIdentifier == TerminalAX.bundleID {
                 self.dictation.resume()
             } else {
